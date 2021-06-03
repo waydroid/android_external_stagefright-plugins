@@ -13,6 +13,7 @@ LOCAL_SHARED_LIBRARIES += \
 	libcutils         \
 	libffmpeg_utils   \
 	$(if $(filter true,$(BOARD_USE_LIBAV)),libavresample,libswresample) \
+	libavfilter       \
 	liblog            \
 	libswscale        \
 	libstagefright    \

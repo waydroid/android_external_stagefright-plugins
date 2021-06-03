@@ -34,6 +34,12 @@
 
 static int decoder_reorder_pts = -1;
 
+typedef struct {
+    int width;
+    int height;
+    int format;
+} FilterSettings;
+
 namespace android {
 
 static const CodecProfileLevel kM4VProfileLevels[] = {
@@ -75,6 +81,9 @@ SoftFFmpegVideo::SoftFFmpegVideo(
       mFFmpegAlreadyInited(false),
       mCodecAlreadyOpened(false),
       mCtx(NULL),
+      mFilterGraph(NULL),
+      mFilterSrcCtx(NULL),
+      mFilterSinkCtx(NULL),
       mImgConvertCtx(NULL),
       mFrame(NULL),
       mPacket(NULL),
@@ -149,6 +158,11 @@ status_t SoftFFmpegVideo::initDecoder(enum AVCodecID codecID) {
 
 void SoftFFmpegVideo::deInitDecoder() {
     ALOGD("%p deInitDecoder: %p", this, mCtx);
+    if (mFilterGraph) {
+        av_freep(&mFilterGraph->opaque);
+        avfilter_graph_free(&mFilterGraph);
+        mFilterSrcCtx = mFilterSinkCtx = NULL;
+    }
     if (mCtx) {
         if (avcodec_is_open(mCtx)) {
             avcodec_flush_buffers(mCtx);
@@ -553,11 +567,151 @@ int32_t SoftFFmpegVideo::decodeVideo() {
                 //don't send error to OMXCodec, skip!
                 ret = ERR_NO_FRM;
             } else {
-                ret = ERR_OK;
+                // Check filter graph
+                if (mFilterGraph) {
+                    FilterSettings *settings = (FilterSettings*)mFilterGraph->opaque;
+                    if (settings->width != mFrame->width || settings->height != mFrame->height || settings->format != mFrame->format) {
+                        av_freep(&mFilterGraph->opaque);
+                        avfilter_graph_free(&mFilterGraph);
+                        mFilterSrcCtx = mFilterSinkCtx = NULL;
+                    }
+                }
+
+                // Setup filter graph.
+                if (!mFilterGraph) {
+                    const AVFilter *buffersrc = avfilter_get_by_name("buffer");
+                    const AVFilter *buffersink = avfilter_get_by_name("buffersink");
+                    AVFilterInOut *inputs = NULL;
+                    AVFilterInOut *outputs = NULL;
+                    enum AVPixelFormat pix_fmts[] = { AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE };
+                    char args[512];
+                    FilterSettings *settings;
+
+                    // If time_base is not known, assume MPEG-like codec.
+                    // A valid time_base is required to setup the filter.
+                    if (mCtx->time_base.num == 0) {
+                        mCtx->time_base.num = 1;
+                        mCtx->time_base.den = 90000;
+                    }
+
+                    // Allocate temporary I/O data structures.
+                    inputs = avfilter_inout_alloc();
+                    outputs = avfilter_inout_alloc();
+                    if (!inputs || !outputs) {
+                        ALOGE("oom in filter generation (i/o)");
+                        goto filterend;
+                    }
+
+                    // Allocate filter graph.
+                    mFilterGraph = avfilter_graph_alloc();
+                    if (!mFilterGraph) {
+                        ALOGE("oom in filter generation (graph)");
+                        goto filterend;
+                    }
+
+                    // Store filter settings
+                    mFilterGraph->opaque = settings = (FilterSettings*)av_mallocz(sizeof(FilterSettings));
+                    if (!settings) {
+                        ALOGE("oom in filter generation (settings)");
+                        goto filterend;
+                    }
+                    settings->width = mFrame->width;
+                    settings->height = mFrame->height;
+                    settings->format = mFrame->format;
+
+                    // Create filter input source.
+                    snprintf(args, sizeof(args),
+                             "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:pixel_aspect=%d/%d",
+                             mFrame->width, mFrame->height, mFrame->format,
+                             mCtx->time_base.num, mCtx->time_base.den,
+                             mCtx->sample_aspect_ratio.num, mCtx->sample_aspect_ratio.den);
+                    ALOGI("filter source: %s", args);
+                    err = avfilter_graph_create_filter(&mFilterSrcCtx, buffersrc, "in",
+                                                       args, NULL, mFilterGraph);
+                    if (err < 0) {
+                        ALOGE("failed to generate filter (source): %d", err);
+                        goto filterend;
+                    }
+
+                    // Create filter output sink.
+                    err = avfilter_graph_create_filter(&mFilterSinkCtx, buffersink, "out",
+                                                       NULL, NULL, mFilterGraph);
+                    if (err < 0) {
+                        ALOGE("failed to generate filter (sink): %d", err);
+                        goto filterend;
+                    }
+                    err = av_opt_set_int_list(mFilterSinkCtx, "pix_fmts", pix_fmts,
+                                              AV_PIX_FMT_NONE, AV_OPT_SEARCH_CHILDREN);
+                    if (err < 0) {
+                        ALOGE("failed to generate filter (sink format): %d", err);
+                        goto filterend;
+                    }
+
+                    // Connect source to filter (our output is the filter's input).
+                    outputs->name = av_strdup("in");
+                    outputs->filter_ctx = mFilterSrcCtx;
+                    outputs->pad_idx = 0;
+                    outputs->next = NULL;
+
+                    // Connect sink to filter (the filter's output is our input).
+                    inputs->name = av_strdup("out");
+                    inputs->filter_ctx = mFilterSinkCtx;
+                    inputs->pad_idx = 0;
+                    inputs->next = NULL;
+
+                    // Create deinterlace filter.
+                    snprintf(args, sizeof(args),
+                             "yadif=deint=interlaced:parity=auto");
+                    ALOGI("filter graph: %s", args);
+                    err = avfilter_graph_parse_ptr(mFilterGraph, args,
+                                                   &inputs, &outputs, NULL);
+                    if (err < 0) {
+                        ALOGE("failed to generate filter (graph): %d", err);
+                        goto filterend;
+                    }
+                    err = avfilter_graph_config(mFilterGraph, NULL);
+                    if (err < 0) {
+                        ALOGE("failed to generate filed (config): %d", err);
+                        goto filterend;
+                    }
+
+filterend:
+                    avfilter_inout_free(&inputs);
+                    avfilter_inout_free(&outputs);
+                    if (err < 0) {
+                        ret = ERR_SWS_FAILED;
+                        goto decodeend;
+                    }
+                }
+
+                // Feed frame to the filter graph.
+                err = av_buffersrc_add_frame_flags(mFilterSrcCtx, mFrame, AV_BUFFERSRC_FLAG_KEEP_REF);
+                av_frame_unref(mFrame);
+                if (err < 0) {
+                    ALOGE("failed to filter frame (input)");
+                    ret = ERR_NO_FRM;
+                    goto decodeend;
+                }
+
+                // Read from from filter graph.
+                err = av_buffersink_get_frame(mFilterSinkCtx, mFrame);
+                if (err < 0) {
+                    if (err == AVERROR(EAGAIN)) {
+                        ret = ERR_NO_FRM;
+                    } else if (err == AVERROR_EOF) {
+                        ret = ERR_FLUSHED;
+                    } else {
+                        ALOGE("failed to filter frame (output)");
+                        ret = ERR_NO_FRM;
+                    }
+                } else {
+                    ret = ERR_OK;
+                }
             }
         }
     }
 
+decodeend:
     if (!inQueue.empty()) {
         inQueue.erase(inQueue.begin());
         if (inInfo) {

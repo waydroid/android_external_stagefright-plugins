@@ -11,6 +11,7 @@ LOCAL_SRC_FILES := \
 
 LOCAL_SHARED_LIBRARIES += \
 	libavcodec        \
+	libavfilter       \
 	libavformat       \
 	libavutil         \
 	libcutils         \
@@ -31,7 +32,9 @@ LOCAL_MODULE := libffmpeg_utils
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)
 LOCAL_EXPORT_SHARED_LIBRARY_HEADERS += \
 	libavcodec        \
+	libavfilter       \
 	libavformat       \
+	libavutil         \
 	$(if $(filter true,$(BOARD_USE_LIBAV)),libavresample,libswresample) \
 	libswscale
 LOCAL_EXPORT_HEADER_LIBRARY_HEADERS += libaudio_system_headers media_ndk_headers

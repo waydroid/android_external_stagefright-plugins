@@ -82,6 +82,9 @@ private:
     bool mFFmpegAlreadyInited;
     bool mCodecAlreadyOpened;
     AVCodecContext *mCtx;
+    AVFilterGraph *mFilterGraph;
+    AVFilterContext *mFilterSrcCtx;
+    AVFilterContext *mFilterSinkCtx;
     struct SwsContext *mImgConvertCtx;
     AVFrame *mFrame;
     AVPacket *mPacket;
