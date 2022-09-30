@@ -54,6 +54,7 @@ private:
     c2_status_t processCodecConfig(C2ReadView* inBuffer);
     c2_status_t sendInputBuffer(C2ReadView* inBuffer, int64_t timestamp);
     c2_status_t receiveFrame(bool* hasPicture);
+    c2_status_t deinterlaceFrame(bool* hasPicture);
     c2_status_t getOutputBuffer(C2GraphicView* outBuffer);
     c2_status_t outputFrame(
         const std::unique_ptr<C2Work> &work,
@@ -68,6 +69,9 @@ private:
     std::shared_ptr<C2FFMPEGVideoDecodeInterface> mIntf;
     enum AVCodecID mCodecID;
     AVCodecContext* mCtx;
+    AVFilterGraph *mFilterGraph;
+    AVFilterContext *mFilterSrcCtx;
+    AVFilterContext *mFilterSinkCtx;
     struct SwsContext *mImgConvertCtx;
     AVFrame* mFrame;
     AVPacket* mPacket;
@@ -75,6 +79,9 @@ private:
     bool mCodecAlreadyOpened;
     bool mExtradataReady;
     bool mEOSSignalled;
+    bool mFilterInitialized;
+    int mDeinterlaceMode;
+    int mDeinterlaceIndicator;
     std::deque<PendingWork> mPendingWorkQueue;
 };
 

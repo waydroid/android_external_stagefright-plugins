@@ -16,6 +16,7 @@
 
 #define LOG_TAG "C2FFMPEGVideoDecodeComponent"
 #include <android-base/properties.h>
+#include <android-base/stringprintf.h>
 #include <log/log.h>
 #include <algorithm>
 
@@ -27,7 +28,30 @@
 #define DEBUG_WORKQUEUE 0
 #define DEBUG_EXTRADATA 0
 
+#define DEINTERLACE_MODE_NONE 0
+#define DEINTERLACE_MODE_SOFTWARE 1
+#define DEINTERLACE_MODE_AUTO 2
+
+typedef struct {
+    int width;
+    int height;
+    int format;
+} FilterSettings;
+
 namespace android {
+
+static int getDeinterlaceMode() {
+    std::string prop = base::GetProperty("debug.ffmpeg-codec2.deinterlace", "auto");
+
+    if (prop == "auto") {
+        return DEINTERLACE_MODE_AUTO;
+    } else if (prop == "software") {
+        return DEINTERLACE_MODE_SOFTWARE;
+    } else if (prop != "none") {
+        ALOGE("unsupported deinterlace mode: %s", prop.c_str());
+    }
+    return DEINTERLACE_MODE_NONE;
+}
 
 C2FFMPEGVideoDecodeComponent::C2FFMPEGVideoDecodeComponent(
         const C2FFMPEGComponentInfo* componentInfo,
@@ -37,6 +61,9 @@ C2FFMPEGVideoDecodeComponent::C2FFMPEGVideoDecodeComponent(
       mIntf(intf),
       mCodecID(componentInfo->codecID),
       mCtx(NULL),
+      mFilterGraph(NULL),
+      mFilterSrcCtx(NULL),
+      mFilterSinkCtx(NULL),
       mImgConvertCtx(NULL),
       mFrame(NULL),
       mPacket(NULL),
@@ -87,8 +114,12 @@ c2_status_t C2FFMPEGVideoDecodeComponent::initDecoder() {
         mCtx->codec_id = (enum AVCodecID)codecInfo->codec_id;
     }
 
-    ALOGD("initDecoder: %p [%s], %d x %d, %s",
-          mCtx, avcodec_get_name(mCtx->codec_id), size.width, size.height, mInfo->mediaType);
+    mDeinterlaceMode = getDeinterlaceMode();
+    mDeinterlaceIndicator = 0;
+
+    ALOGD("initDecoder: %p [%s], %d x %d, %s, deinterlace = %d",
+          mCtx, avcodec_get_name(mCtx->codec_id), size.width, size.height, mInfo->mediaType,
+          mDeinterlaceMode);
 
     return C2_OK;
 }
@@ -150,6 +181,11 @@ c2_status_t C2FFMPEGVideoDecodeComponent::openDecoder() {
 
 void C2FFMPEGVideoDecodeComponent::deInitDecoder() {
     ALOGD("%p deInitDecoder: %p", this, mCtx);
+    if (mFilterGraph) {
+        av_freep(&mFilterGraph->opaque);
+        avfilter_graph_free(&mFilterGraph);
+        mFilterSrcCtx = mFilterSinkCtx = NULL;
+    }
     if (mCtx) {
         if (avcodec_is_open(mCtx)) {
             avcodec_flush_buffers(mCtx);
@@ -180,6 +216,7 @@ void C2FFMPEGVideoDecodeComponent::deInitDecoder() {
     }
     mEOSSignalled = false;
     mExtradataReady = false;
+    mFilterInitialized = false;
     mPendingWorkQueue.clear();
 }
 
@@ -239,20 +276,257 @@ c2_status_t C2FFMPEGVideoDecodeComponent::sendInputBuffer(
     return C2_OK;
 }
 
+c2_status_t C2FFMPEGVideoDecodeComponent::deinterlaceFrame(bool* hasPicture) {
+    int err = 0;
+
+    // Check filter graph
+    if (mFilterGraph && mFilterInitialized) {
+        FilterSettings *settings = (FilterSettings*)mFilterGraph->opaque;
+
+        if (settings->width != mFrame->width || settings->height != mFrame->height || settings->format != mFrame->format) {
+            av_freep(&mFilterGraph->opaque);
+            avfilter_graph_free(&mFilterGraph);
+            mFilterSrcCtx = mFilterSinkCtx = NULL;
+            mFilterInitialized = false;
+        }
+    }
+
+    // Setup filter graph.
+    if (!mFilterGraph) {
+        const AVFilter *buffersrc = avfilter_get_by_name("buffer");
+        const AVFilter *buffersink = avfilter_get_by_name("buffersink");
+        AVFilterInOut *inputs = NULL;
+        AVFilterInOut *outputs = NULL;
+        enum AVPixelFormat pix_fmts[] = { (enum AVPixelFormat)mFrame->format, AV_PIX_FMT_NONE };
+        std::string args;
+        FilterSettings *settings;
+
+        // If time_base is not known, assume MPEG-like codec.
+        // A valid time_base is required to setup the filter.
+        if (mCtx->time_base.num == 0) {
+            mCtx->time_base.num = 1;
+            mCtx->time_base.den = 90000;
+        }
+
+        // Allocate temporary I/O data structures.
+        inputs = avfilter_inout_alloc();
+        outputs = avfilter_inout_alloc();
+        if (!inputs || !outputs) {
+            ALOGE("deinterlaceFrame: oom in filter generation (i/o)");
+            err = -ENOMEM;
+            goto filterend;
+        }
+
+        // Allocate filter graph.
+        mFilterGraph = avfilter_graph_alloc();
+        if (!mFilterGraph) {
+            ALOGE("deinterlaceFrame: oom in filter generation (graph)");
+            err = -ENOMEM;
+            goto filterend;
+        }
+
+        // Store filter settings
+        mFilterGraph->opaque = settings = (FilterSettings*)av_mallocz(sizeof(FilterSettings));
+        if (!settings) {
+            ALOGE("deinterlaceFrame: oom in filter generation (settings)");
+            err = -ENOMEM;
+            goto filterend;
+        }
+        settings->width = mFrame->width;
+        settings->height = mFrame->height;
+        settings->format = mFrame->format;
+
+        // Create filter input source.
+        args = base::StringPrintf(
+                 "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:pixel_aspect=%d/%d",
+                 mFrame->width, mFrame->height, mFrame->format,
+                 mCtx->time_base.num, mCtx->time_base.den,
+                 mCtx->sample_aspect_ratio.num, mCtx->sample_aspect_ratio.den);
+        ALOGI("deinterlaceFrame: filter source = %s", args.c_str());
+        err = avfilter_graph_create_filter(&mFilterSrcCtx, buffersrc, "in",
+                                           args.c_str(), NULL, mFilterGraph);
+        if (err < 0) {
+            ALOGE("deinterlaceFrame: failed to generate filter (source): %s (%08x)",
+                  av_err2str(err), err);
+            goto filterend;
+        } else {
+            AVBufferSrcParameters params = {
+                .format = AV_PIX_FMT_NONE, // Don't change pixel format set above
+                .hw_frames_ctx = mCtx->hw_frames_ctx
+            };
+
+            err = av_buffersrc_parameters_set(mFilterSrcCtx, &params);
+            if (err < 0) {
+                ALOGE("deinterlaceFrame: failed to generate filter (source params): %s (%08x)",
+                      av_err2str(err), err);
+                goto filterend;
+            }
+        }
+
+        // Create filter output sink.
+        err = avfilter_graph_create_filter(&mFilterSinkCtx, buffersink, "out",
+                                           NULL, NULL, mFilterGraph);
+        if (err < 0) {
+            ALOGE("deinterlaceFrame: failed to generate filter (sink): %s (%08x)",
+                  av_err2str(err), err);
+            goto filterend;
+        }
+        err = av_opt_set_int_list(mFilterSinkCtx, "pix_fmts", pix_fmts,
+                                  AV_PIX_FMT_NONE, AV_OPT_SEARCH_CHILDREN);
+        if (err < 0) {
+            ALOGE("deinterlaceFrame: failed to generate filter (sink format): %s (%08x)",
+                  av_err2str(err), err);
+            goto filterend;
+        }
+
+        // Connect source to filter (our output is the filter's input).
+        outputs->name = av_strdup("in");
+        outputs->filter_ctx = mFilterSrcCtx;
+        outputs->pad_idx = 0;
+        outputs->next = NULL;
+
+        // Connect sink to filter (the filter's output is our input).
+        inputs->name = av_strdup("out");
+        inputs->filter_ctx = mFilterSinkCtx;
+        inputs->pad_idx = 0;
+        inputs->next = NULL;
+
+        // Create deinterlace filter.
+        if (mFrame->format == AV_PIX_FMT_VAAPI) {
+            args = base::StringPrintf(
+                    "deinterlace_vaapi=mode=%s",
+                    base::GetProperty("debug.ffmpeg-codec2.deinterlace.vaapi", "default").c_str());
+        } else {
+            args = base::StringPrintf(
+                    "yadif=deint=interlaced:parity=auto");
+        }
+        ALOGI("deinterlaceFrame: filter graph = %s", args.c_str());
+        err = avfilter_graph_parse_ptr(mFilterGraph, args.c_str(),
+                                       &inputs, &outputs, NULL);
+        if (err < 0) {
+            ALOGE("deinterlaceFrame: failed to generate filter (graph): %s (%08x)",
+                  av_err2str(err), err);
+            goto filterend;
+        }
+        err = avfilter_graph_config(mFilterGraph, NULL);
+        if (err < 0) {
+            ALOGE("deinterlaceFrame: failed to generate filter (config): %s (%08x)",
+                  av_err2str(err), err);
+            goto filterend;
+        }
+
+        mFilterInitialized = true;
+
+filterend:
+        avfilter_inout_free(&inputs);
+        avfilter_inout_free(&outputs);
+    }
+
+    // Process/Filter frame.
+    if (mFilterInitialized) {
+        // Feed frame to the filter graph.
+        err = av_buffersrc_add_frame_flags(mFilterSrcCtx, mFrame, AV_BUFFERSRC_FLAG_KEEP_REF);
+        av_frame_unref(mFrame);
+        if (err == 0) {
+            // Read from from filter graph.
+            err = av_buffersink_get_frame(mFilterSinkCtx, mFrame);
+            if (err == 0) {
+                *hasPicture = true;
+            } else if (err == AVERROR(EAGAIN) || err == AVERROR_EOF) {
+                *hasPicture = false;
+            } else {
+                // Don't send error to client, skip frame!
+                ALOGE("deinterlaceFrame: failed to filter frame (output): %s, (%08x)",
+                      av_err2str(err), err);
+            }
+        } else {
+            // Don't send error to client, skip frame!
+            ALOGE("deinterlaceFrame: failed to filter frame (input): %s (%08x)",
+                  av_err2str(err), err);
+        }
+    } else {
+        // Don't send error to client, don't deinterlace
+        *hasPicture = true;
+    }
+
+    return C2_OK;
+}
+
 c2_status_t C2FFMPEGVideoDecodeComponent::receiveFrame(bool* hasPicture) {
     int err = avcodec_receive_frame(mCtx, mFrame);
 
     *hasPicture = false;
     if (err == 0) {
-        err = ffmpeg_hwaccel_get_frame(mCtx, mFrame);
-        if (err == 0) {
-            *hasPicture = true;
+        // Update deinterlace indicator during the first 30 frames. We don't expect
+        // interlace status to change mid-stream, but there has been instances of progressive
+        // streams with sporadic interlaced frames. After the initial period, the interlace
+        // status is frozen.
+        if (mCtx->frame_number <= 30) {
+            mDeinterlaceIndicator += (mFrame->interlaced_frame ? 1 : -1);
+#if DEBUG_FRAMES
+            ALOGD("receiveFrame: deinterlace indicator = %d", mDeinterlaceIndicator);
+#endif
+        } else if (mFilterGraph && mDeinterlaceIndicator < 0) {
+            // Deinterlace filter was incorrectly initialized.
+            ALOGW("receiveFrame: releasing deinterlace filter, as content is not interlaced");
+            av_freep(&mFilterGraph->opaque);
+            avfilter_graph_free(&mFilterGraph);
+            mFilterSrcCtx = mFilterSinkCtx = NULL;
+            mFilterInitialized = false;
+        }
+        // Handle deinterlace and HW frame download
+        // - if use HW deinterlace: deinterlace => download
+        // - else if use SW deinterlace: download => deinterlace
+        // - else: download
+        if (mDeinterlaceMode != DEINTERLACE_MODE_NONE && mDeinterlaceIndicator > 0) {
+            // Check whether deinterlacing should be done in HW context
+            if (mDeinterlaceMode == DEINTERLACE_MODE_AUTO && mFrame->format == AV_PIX_FMT_VAAPI) {
+                err = deinterlaceFrame(hasPicture);
+                if (err == 0 && *hasPicture) {
+                    err = ffmpeg_hwaccel_get_frame(mCtx, mFrame);
+                    if (err < 0) {
+                        ALOGE("receiveFrame: failed to receive frame from HW decoder: %s (%08x)",
+                              av_err2str(err), err);
+                        // Don't send error to client, skip frame!
+                        *hasPicture = false;
+                    }
+                } else if (err < 0) {
+                    ALOGE("receiveFrame: failed to deinterlace frame: %s (%08x)",
+                          av_err2str(err), err);
+                    // Don't send error to client, skip frame!
+                }
+            }
+            // Otherwise handle deinterlacing in SW context
+            // NOTE: Not sure whether sw-deinterlacer would handle y-tiled correctly, so don't use it.
+            else {
+                err = ffmpeg_hwaccel_get_frame(mCtx, mFrame);
+                if (err == 0) {
+                    err = deinterlaceFrame(hasPicture);
+                    if (err < 0) {
+                        ALOGE("receiveFrame: failed to deinterlace frame: %s (%08x)",
+                              av_err2str(err), err);
+                        // Don't send error to client, skip frame!
+                        *hasPicture = false;
+                    }
+                } else {
+                    ALOGE("receiveFrame: failed to receive frame from HW decoder: %s (%08x)",
+                          av_err2str(err), err);
+                    // Don't send error to client, skip frame!
+                }
+            }
         } else {
-            ALOGE("receiveFrame: failed to receive frame from HW decoder err = %d", err);
-            // Don't send error to client, skip frame!
+            err = ffmpeg_hwaccel_get_frame(mCtx, mFrame);
+            if (err == 0) {
+                *hasPicture = true;
+            } else {
+                ALOGE("receiveFrame: failed to receive frame from HW decoder: %s (%08x)",
+                      av_err2str(err), err);
+                // Don't send error to client, skip frame!
+            }
         }
     } else if (err != AVERROR(EAGAIN) && err != AVERROR_EOF) {
-        ALOGE("receiveFrame: failed to receive frame from decoder err = %d", err);
+        ALOGE("receiveFrame: failed to receive frame from decoder: %s (%08x)",
+              av_err2str(err), err);
         // Don't report error to client.
     }
 

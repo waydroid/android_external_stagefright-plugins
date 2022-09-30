@@ -34,6 +34,7 @@ LOCAL_SRC_FILES := \
 LOCAL_SHARED_LIBRARIES := \
 	android.hardware.media.c2@1.1 \
 	libavcodec \
+	libavfilter \
 	libavutil \
 	libavservices_minijail \
 	libbase \
