@@ -58,9 +58,6 @@ static enum AVPixelFormat get_format(AVCodecContext *s, const enum AVPixelFormat
             continue;
         }
 
-        // Multi-threaded hw decoding is not supported well.
-        s->thread_count = 1;
-
         // Hw-accel found and initialized, stop here.
         break;
     }
