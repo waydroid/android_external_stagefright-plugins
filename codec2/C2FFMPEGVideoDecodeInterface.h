@@ -21,6 +21,9 @@
 #include "C2FFMPEGCommon.h"
 #include "codec_utils.h"
 
+// Private pixel format (matches intel/minigbm).
+#define HAL_PIXEL_FORMAT_NV12_Y_TILED_INTEL 0x100
+
 namespace android {
 
 class C2FFMPEGVideoDecodeInterface : public SimpleInterface<void>::BaseParams {
@@ -32,6 +35,9 @@ public:
     uint32_t getWidth() const { return mSize->width; }
     uint32_t getHeight() const { return mSize->height; }
     const FFMPEGVideoCodecInfo* getCodecInfo() const;
+    uint64_t getConsumerUsage() const { return mConsumerUsage->value; }
+    const std::shared_ptr<C2StreamPixelFormatInfo::output>&
+        getPixelFormatInfo() const { return mPixelFormat; }
     uint32_t getOutputDelay() const { return mActualOutputDelay->value; }
 
 private:
@@ -52,6 +58,7 @@ private:
     std::shared_ptr<C2StreamColorInfo::output> mColorInfo;
     std::shared_ptr<C2StreamPixelFormatInfo::output> mPixelFormat;
     std::shared_ptr<C2StreamRawCodecDataInfo::input> mRawCodecData;
+    std::shared_ptr<C2StreamUsageTuning::output> mConsumerUsage;
 };
 
 } // namespace android

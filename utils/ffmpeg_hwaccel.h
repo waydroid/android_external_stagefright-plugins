@@ -9,7 +9,8 @@ extern "C" {
 
 extern int  ffmpeg_hwaccel_init(AVCodecContext *avctx);
 extern void ffmpeg_hwaccel_deinit(AVCodecContext *avctx);
-extern int  ffmpeg_hwaccel_get_frame(AVCodecContext *avctx, AVFrame *frame);
+extern int  ffmpeg_hwaccel_get_frame(AVCodecContext *avctx, AVFrame *frame,
+                                     int use_drm_prime);
 
 #ifdef __cplusplus
 };

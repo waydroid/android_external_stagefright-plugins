@@ -203,7 +203,7 @@ C2FFMPEGVideoDecodeInterface::C2FFMPEGVideoDecodeInterface(
     addParameter(
             DefineParam(mPixelFormat, C2_PARAMKEY_PIXEL_FORMAT)
             .withConstValue(new C2StreamPixelFormatInfo::output(
-                                 0u, HAL_PIXEL_FORMAT_YCBCR_420_888))
+                                 0u, HAL_PIXEL_FORMAT_NV12_Y_TILED_INTEL))
             .build());
 
     addParameter(
@@ -211,6 +211,14 @@ C2FFMPEGVideoDecodeInterface::C2FFMPEGVideoDecodeInterface(
             .withDefault(C2StreamRawCodecDataInfo::input::AllocShared(0, 0u))
             .withFields({C2F(mRawCodecData, m.value)})
             .withSetter(CodecSetter)
+            .build());
+
+    addParameter(
+            DefineParam(mConsumerUsage, C2_PARAMKEY_OUTPUT_STREAM_USAGE)
+            .withDefault(new C2StreamUsageTuning::output(
+                                0u, GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_COMPOSER))
+            .withFields({C2F(mConsumerUsage, value).any()})
+            .withSetter(Setter<decltype(*mConsumerUsage)>::StrictValueWithNoDeps)
             .build());
 }
 

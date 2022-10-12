@@ -544,7 +544,7 @@ int32_t SoftFFmpegVideo::decodeVideo() {
                 ret = ERR_NO_FRM;
             }
         } else {
-            err = ffmpeg_hwaccel_get_frame(mCtx, mFrame);
+            err = ffmpeg_hwaccel_get_frame(mCtx, mFrame, 0);
             if (err < 0) {
                 if ((mLoggedError & 0x02) == 0) {
                     ALOGE("ffmpeg HW video decoder failed to decode frame (logged only once). (%d)", err);
