@@ -14,7 +14,7 @@ LOCAL_SHARED_LIBRARIES += \
 	liblog            \
 	libstagefright    \
 	libstagefright_foundation \
-	libutils
+	libutils libmediandk
 
 LOCAL_MODULE:= libffmpeg_extractor
 LOCAL_MODULE_RELATIVE_PATH := extractors

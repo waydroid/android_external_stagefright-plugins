@@ -19,7 +19,8 @@ LOCAL_SHARED_LIBRARIES += \
 	libstagefright_foundation \
 	$(if $(filter true,$(BOARD_USE_LIBAV)),libavresample,libswresample) \
 	libswscale        \
-	libutils
+	libutils \
+	libmediandk
 
 LOCAL_STATIC_LIBRARIES += libstagefright_metadatautils
 
