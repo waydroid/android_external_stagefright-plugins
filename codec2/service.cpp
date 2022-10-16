@@ -15,12 +15,12 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "android.hardware.media.c2@1.2-service"
+#define LOG_TAG "android.hardware.media.c2@1.1-service"
 
 #include <android-base/logging.h>
 #include <android-base/properties.h>
 #include <binder/ProcessState.h>
-#include <codec2/hidl/1.2/ComponentStore.h>
+#include <codec2/hidl/1.1/ComponentStore.h>
 #include <hidl/HidlTransportSupport.h>
 #include <minijail.h>
 
@@ -40,13 +40,13 @@ namespace android {
 // "android.hardware.media.c2@1.1-ffmpeg-seccomp_policy" in Android.bp.
 static constexpr char kBaseSeccompPolicyPath[] =
         "/vendor/etc/seccomp_policy/"
-        "android.hardware.media.c2@1.2-ffmpeg.policy";
+        "android.hardware.media.c2@1.1-ffmpeg.policy";
 
 // Additional seccomp permissions can be added in this file.
 // This file does not exist by default.
 static constexpr char kExtSeccompPolicyPath[] =
         "/vendor/etc/seccomp_policy/"
-        "android.hardware.media.c2@1.2-ffmpeg-extended.policy";
+        "android.hardware.media.c2@1.1-ffmpeg-extended.policy";
 
 static const C2FFMPEGComponentInfo kFFMPEGVideoComponents[] = {
     { "c2.ffmpeg.divx.decoder"  , MEDIA_MIMETYPE_VIDEO_DIVX  , AV_CODEC_ID_MPEG4      },
@@ -287,7 +287,7 @@ private:
 
 int main(int /* argc */, char** /* argv */) {
     using namespace ::android;
-    LOG(DEBUG) << "android.hardware.media.c2@1.2-service starting...";
+    LOG(DEBUG) << "android.hardware.media.c2@1.1-service starting...";
 
     // Set up minijail to limit system calls.
     signal(SIGPIPE, SIG_IGN);
@@ -300,7 +300,7 @@ int main(int /* argc */, char** /* argv */) {
 
     // Create IComponentStore service.
     {
-        using namespace ::android::hardware::media::c2::V1_2;
+        using namespace ::android::hardware::media::c2::V1_1;
         sp<IComponentStore> store;
 
         // TODO: Replace this with
