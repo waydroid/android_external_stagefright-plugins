@@ -19,7 +19,7 @@ include $(CLEAR_VARS)
 include external/$(AV_CODEC_LIB)/android/$(AV_CODEC_LIB).mk
 
 # put the libraries to /vendor
-#LOCAL_PROPRIETARY_MODULE := true
+LOCAL_PROPRIETARY_MODULE := true
 
 LOCAL_C_INCLUDES += \
 	$(LOCAL_PATH)/../include \
