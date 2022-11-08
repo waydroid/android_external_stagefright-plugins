@@ -35,6 +35,7 @@ public:
     uint64_t getConsumerUsage() const { return mConsumerUsage->value; }
     const std::shared_ptr<C2StreamPixelFormatInfo::output>&
         getPixelFormatInfo() const { return mPixelFormat; }
+    uint32_t getPixelFormat() const { return mPixelFormat->value; }
     uint32_t getOutputDelay() const { return mActualOutputDelay->value; }
 
 private:

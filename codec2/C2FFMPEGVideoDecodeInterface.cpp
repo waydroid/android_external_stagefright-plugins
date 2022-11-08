@@ -202,8 +202,10 @@ C2FFMPEGVideoDecodeInterface::C2FFMPEGVideoDecodeInterface(
 
     addParameter(
             DefineParam(mPixelFormat, C2_PARAMKEY_PIXEL_FORMAT)
-            .withConstValue(new C2StreamPixelFormatInfo::output(
+            .withDefault(new C2StreamPixelFormatInfo::output(
                                  0u, HAL_PIXEL_FORMAT_YV12))
+            .withFields({C2F(mPixelFormat, value).any()})
+            .withSetter(Setter<decltype(*mPixelFormat)>::StrictValueWithNoDeps)
             .build());
 
     addParameter(

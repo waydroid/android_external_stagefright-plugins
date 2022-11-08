@@ -49,6 +49,9 @@ LOCAL_SHARED_LIBRARIES := \
 	libswresample \
 	libswscale \
 	libutils
+ifeq ($(CONFIG_VAAPI),yes)
+LOCAL_SHARED_LIBRARIES += libva
+endif
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
