@@ -78,4 +78,4 @@ geteuid: 1
 getgid: 1
 getegid: 1
 getgroups: 1
-
+sysinfo: 1

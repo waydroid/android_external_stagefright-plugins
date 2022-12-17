@@ -71,5 +71,6 @@ gettid: 1
 # Required fy FFMPEG
 sched_getaffinity: 1
 kcmp: 1
+sysinfo: 1
 
 @include /system/etc/seccomp_policy/crash_dump.x86_64.policy
