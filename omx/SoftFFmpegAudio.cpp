@@ -1655,7 +1655,7 @@ SoftOMXComponent* SoftFFmpegAudio::createSoftOMXComponent(
         const char *name, const OMX_CALLBACKTYPE *callbacks,
         OMX_PTR appData, OMX_COMPONENTTYPE **component) {
 
-    if (property_get_bool("debug.ffmpeg-omx.disable", 1))
+    if (property_get_bool("debug.ffmpeg-omx.disable", 0))
         return NULL;
 
     OMX_AUDIO_CODINGTYPE codingType = OMX_AUDIO_CodingAutoDetect;
