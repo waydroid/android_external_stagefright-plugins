@@ -420,12 +420,26 @@ media_status_t setDTSFormat(AVCodecParameters *avpar, AMediaFormat *meta)
     return AMEDIA_OK;
 }
 
+#define FLAC_METADATA_STREAMINFO_SIZE 34
+
 media_status_t setFLACFormat(AVCodecParameters *avpar, AMediaFormat *meta)
 {
     ALOGV("FLAC");
 
     AMediaFormat_setString(meta, AMEDIAFORMAT_KEY_MIME, MEDIA_MIMETYPE_AUDIO_FLAC);
-    AMediaFormat_setBuffer(meta, "raw-codec-specific-data", avpar->extradata, avpar->extradata_size);
+
+    // The ffmpeg FLAC format only provides the STREAMINFO as extradata. The ffmpeg FLAC codec
+    // can work with either the STREAMINFO, or the full header (magic sequence + metadata block
+    // header + STREAMINFO). But the Google FLAC codec only support the latter. For better
+    // compatibility, always include the magic sequence and metadata block header.
+    if (avpar->extradata_size == FLAC_METADATA_STREAMINFO_SIZE) {
+        sp<ABuffer> csd = new ABuffer(avpar->extradata_size + 8);
+        memcpy(csd->data(), "fLaC\x80\x00\x00\x22", 8);
+        memcpy(csd->data() + 8, avpar->extradata, avpar->extradata_size);
+        AMediaFormat_setBuffer(meta, "raw-codec-specific-data", csd->data(), csd->size());
+    } else {
+        AMediaFormat_setBuffer(meta, "raw-codec-specific-data", avpar->extradata, avpar->extradata_size);
+    }
 
     if (avpar->extradata_size < 10) {
         ALOGE("Invalid extradata in FLAC file! (size=%d)", avpar->extradata_size);
