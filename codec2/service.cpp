@@ -22,6 +22,7 @@
 #include <binder/ProcessState.h>
 #include <codec2/hidl/1.1/ComponentStore.h>
 #include <hidl/HidlTransportSupport.h>
+#include <media/stagefright/foundation/MediaDefs.h>
 #include <minijail.h>
 
 #include <util/C2InterfaceHelper.h>

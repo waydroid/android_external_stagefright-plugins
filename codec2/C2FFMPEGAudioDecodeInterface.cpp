@@ -107,9 +107,9 @@ C2R C2FFMPEGAudioDecodeInterface::CodecSetter(
     return C2R::Ok();
 }
 
-const FFMPEGAudioCodecInfo* C2FFMPEGAudioDecodeInterface::getCodecInfo() const {
-    if (mRawCodecData->flexCount() == sizeof(FFMPEGAudioCodecInfo)) {
-        return (const FFMPEGAudioCodecInfo*)mRawCodecData->m.value;
+const C2FFMPEGAudioCodecInfo* C2FFMPEGAudioDecodeInterface::getCodecInfo() const {
+    if (mRawCodecData->flexCount() == sizeof(C2FFMPEGAudioCodecInfo)) {
+        return (const C2FFMPEGAudioCodecInfo*)mRawCodecData->m.value;
     }
     return nullptr;
 }

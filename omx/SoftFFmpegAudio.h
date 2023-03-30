@@ -26,7 +26,10 @@
 #error "__GNUC__ cflags should be enabled"
 #endif
 
-#include "ffmpeg_utils.h"
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libswresample/swresample.h>
+}
 
 #include <OMX_AudioExt.h>
 #include <OMX_IndexExt.h>
@@ -96,7 +99,6 @@ private:
 
     const char* mRole;
     OMX_AUDIO_CODINGTYPE mCodingType;
-    bool mFFmpegAlreadyInited;
     bool mCodecAlreadyOpened;
     bool mExtradataReady;
     bool mIgnoreExtradata;

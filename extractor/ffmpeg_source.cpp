@@ -15,23 +15,21 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "FFMPEG"
-#include <utils/Log.h>
+#define LOG_TAG "FFSource"
+#include <log/log.h>
 
+#include <sys/cdefs.h>
 #include <inttypes.h>
 #include <stdlib.h>
-#include "ffmpeg_source.h"
 
 #include <media/MediaExtractorPluginApi.h>
 #include <media/stagefright/DataSourceBase.h>
 #include <media/stagefright/MediaErrors.h>
 
 extern "C" {
-
-#include "config.h"
-#include "libavformat/url.h"
-#include "libavutil/error.h"
-
+#include <libavformat/avformat.h>
+#include <libavformat/url.h>
+#include <libavutil/avutil.h>
 }
 
 namespace android {
@@ -218,7 +216,8 @@ static int android_check(URLContext *h, int mask)
 
 extern "C" URLProtocol ff_android_protocol;
 
-void ffmpeg_register_android_source()
+__attribute__((constructor))
+static void ffmpeg_register_android_source()
 {
     if (ff_android_protocol.name) return;
 

@@ -15,23 +15,22 @@
  */
 
 #ifndef SUPER_EXTRACTOR_H_
-
 #define SUPER_EXTRACTOR_H_
 
-#include <media/MediaExtractorPluginApi.h>
 #include <media/MediaExtractorPluginHelper.h>
 #include <media/NdkMediaFormat.h>
-#include <media/stagefright/foundation/ABase.h>
+#include <media/stagefright/foundation/AMessage.h>
+#include <utils/Vector.h>
 #include <utils/threads.h>
-#include <utils/KeyedVector.h>
 
-#include "ffmpeg_utils.h"
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavcodec/bsf.h>
+#include <libavformat/avformat.h>
+}
 
 namespace android {
 
-struct ABuffer;
-struct AMessage;
-class String8;
 struct FFmpegSource;
 
 struct FFmpegExtractor : public MediaExtractorPluginHelper {

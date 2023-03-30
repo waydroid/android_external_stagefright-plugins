@@ -14,26 +14,26 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "codec_utils"
-#include <utils/Log.h>
+#define LOG_TAG "extractor_utils"
+#include <log/log.h>
 
-extern "C" {
-
-#include "config.h"
-#include "libavcodec/xiph.h"
-#include "libavutil/intreadwrite.h"
-
-}
-
-#include <utils/Errors.h>
-#include <media/NdkMediaFormat.h>
 #include <media/stagefright/foundation/ABitReader.h>
+#include <media/stagefright/foundation/ABuffer.h>
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/avc_utils.h>
-#include <media/stagefright/MediaDefs.h>
-#include <media/stagefright/MetaDataUtils.h>
+#include <media/stagefright/MetaDataBase.h>
+#include <utils/threads.h>
 
-#include "codec_utils.h"
+extern "C" {
+#include <libavcodec/xiph.h>
+#include <libavutil/avutil.h>
+#include <libavutil/display.h>
+#include <libavutil/eval.h>
+#include <libavutil/intreadwrite.h>
+#include <libavutil/opt.h>
+}
+
+#include "extractor_utils.h"
 
 namespace android {
 
@@ -77,7 +77,9 @@ static sp<ABuffer> MakeMPEGVideoESDS(const sp<ABuffer> &csd) {
     return esds;
 }
 
-//video
+//////////////////////////////////////////////////////////////////////////////////
+// video
+//////////////////////////////////////////////////////////////////////////////////
 
 //H.264 Video Types
 //http://msdn.microsoft.com/en-us/library/dd757808(v=vs.85).aspx
@@ -112,8 +114,22 @@ media_status_t setH264Format(AVCodecParameters *avpar, AMediaFormat *meta)
 
     CHECK_NE((int)avpar->extradata[0], 1); //configurationVersion
 
-    if (!MakeAVCCodecSpecificData(meta, avpar->extradata, avpar->extradata_size))
+    int32_t width, height;
+    int32_t sarWidth, sarHeight;
+    sp<ABuffer> accessUnit = new ABuffer(avpar->extradata, avpar->extradata_size);
+    sp<ABuffer> csd = MakeAVCCodecSpecificData(accessUnit, &width, &height, &sarWidth, &sarHeight);
+
+    if (csd == nullptr)
       return AMEDIA_ERROR_UNKNOWN;
+
+    AMediaFormat_setString(meta, AMEDIAFORMAT_KEY_MIME, MEDIA_MIMETYPE_VIDEO_AVC);
+    AMediaFormat_setBuffer(meta, AMEDIAFORMAT_KEY_CSD_AVC, csd->data(), csd->size());
+    AMediaFormat_setInt32(meta, AMEDIAFORMAT_KEY_WIDTH, width);
+    AMediaFormat_setInt32(meta, AMEDIAFORMAT_KEY_HEIGHT, height);
+    if (sarWidth > 0 && sarHeight > 0) {
+        AMediaFormat_setInt32(meta, AMEDIAFORMAT_KEY_SAR_WIDTH, sarWidth);
+        AMediaFormat_setInt32(meta, AMEDIAFORMAT_KEY_SAR_HEIGHT, sarHeight);
+    }
 
     return AMEDIA_OK;
 }
@@ -274,7 +290,9 @@ media_status_t setVP9Format(AVCodecParameters *avpar __unused, AMediaFormat *met
     return AMEDIA_OK;
 }
 
-//audio
+//////////////////////////////////////////////////////////////////////////////////
+// audio
+//////////////////////////////////////////////////////////////////////////////////
 
 media_status_t setMP2Format(AVCodecParameters *avpar __unused, AMediaFormat *meta)
 {
@@ -460,6 +478,10 @@ media_status_t setFLACFormat(AVCodecParameters *avpar, AMediaFormat *meta)
     return AMEDIA_OK;
 }
 
+//////////////////////////////////////////////////////////////////////////////////
+// parser
+//////////////////////////////////////////////////////////////////////////////////
+
 //Convert H.264 NAL format to annex b
 media_status_t convertNal2AnnexB(uint8_t *dst, size_t dst_size,
         uint8_t *src, size_t src_size, size_t nal_len_size)
@@ -604,17 +626,370 @@ AudioEncoding sampleFormatToEncoding(AVSampleFormat fmt) {
 
 }
 
-AVSampleFormat encodingToSampleFormat(AudioEncoding encoding) {
-    switch (encoding) {
-        case kAudioEncodingPcm8bit:
-            return AV_SAMPLE_FMT_U8;
-        case kAudioEncodingPcm16bit:
-            return AV_SAMPLE_FMT_S16;
-        case kAudioEncodingPcmFloat:
-            return AV_SAMPLE_FMT_FLT;
-        default:
-            return AV_SAMPLE_FMT_NONE;
+double get_rotation(AVStream *st)
+{
+    AVDictionaryEntry *rotate_tag = av_dict_get(st->metadata, "rotate", NULL, 0);
+    uint8_t* displaymatrix = av_stream_get_side_data(st,
+                                                     AV_PKT_DATA_DISPLAYMATRIX, NULL);
+    double theta = 0;
+
+    if (rotate_tag && *rotate_tag->value && strcmp(rotate_tag->value, "0")) {
+        char *tail;
+        theta = av_strtod(rotate_tag->value, &tail);
+        if (*tail)
+            theta = 0;
     }
+    if (displaymatrix && !theta)
+        theta = -av_display_rotation_get((int32_t*) displaymatrix);
+
+    theta -= 360*floor(theta/360 + 0.9/360);
+
+    if (fabs(theta - 90*round(theta/90)) > 2)
+        av_log(NULL, AV_LOG_WARNING, "Odd rotation angle.");
+
+    return theta;
+}
+
+int check_stream_specifier(AVFormatContext *s, AVStream *st, const char *spec)
+{
+    int ret = avformat_match_stream_specifier(s, st, spec);
+    if (ret < 0)
+        av_log(s, AV_LOG_ERROR, "Invalid stream specifier: %s.\n", spec);
+    return ret;
+}
+
+AVDictionary *filter_codec_opts(AVDictionary *opts, enum AVCodecID codec_id,
+                                AVFormatContext *s, AVStream *st, AVCodec *codec)
+{
+    AVDictionary    *ret = NULL;
+    AVDictionaryEntry *t = NULL;
+    int            flags = s->oformat ? AV_OPT_FLAG_ENCODING_PARAM
+                                      : AV_OPT_FLAG_DECODING_PARAM;
+    char          prefix = 0;
+    const AVClass    *cc = avcodec_get_class();
+
+    if (!codec)
+        codec = (AVCodec*)(s->oformat ? avcodec_find_encoder(codec_id)
+                                      : avcodec_find_decoder(codec_id));
+
+    switch (st->codecpar->codec_type) {
+    case AVMEDIA_TYPE_VIDEO:
+        prefix = 'v';
+        flags |= AV_OPT_FLAG_VIDEO_PARAM;
+        break;
+    case AVMEDIA_TYPE_AUDIO:
+        prefix = 'a';
+        flags |= AV_OPT_FLAG_AUDIO_PARAM;
+        break;
+    case AVMEDIA_TYPE_SUBTITLE:
+        prefix = 's';
+        flags |= AV_OPT_FLAG_SUBTITLE_PARAM;
+        break;
+    default:
+        break;
+    }
+
+    while ((t = av_dict_get(opts, "", t, AV_DICT_IGNORE_SUFFIX))) {
+        char *p = strchr(t->key, ':');
+
+        /* check stream specification in opt name */
+        if (p)
+            switch (check_stream_specifier(s, st, p + 1)) {
+            case  1: *p = 0; break;
+            case  0:         continue;
+            default:         return NULL;
+            }
+
+        if (av_opt_find(&cc, t->key, NULL, flags, AV_OPT_SEARCH_FAKE_OBJ) ||
+            (codec && codec->priv_class &&
+             av_opt_find(&codec->priv_class, t->key, NULL, flags,
+                         AV_OPT_SEARCH_FAKE_OBJ)))
+            av_dict_set(&ret, t->key, t->value, 0);
+        else if (t->key[0] == prefix &&
+                 av_opt_find(&cc, t->key + 1, NULL, flags,
+                             AV_OPT_SEARCH_FAKE_OBJ))
+            av_dict_set(&ret, t->key + 1, t->value, 0);
+
+        if (p)
+            *p = ':';
+    }
+    return ret;
+}
+
+AVDictionary **setup_find_stream_info_opts(AVFormatContext *s,
+                                           AVDictionary *codec_opts)
+{
+    unsigned int i;
+    AVDictionary **opts;
+
+    if (!s->nb_streams)
+        return NULL;
+    opts = (AVDictionary**)av_mallocz(s->nb_streams * sizeof(*opts));
+    if (!opts) {
+        av_log(NULL, AV_LOG_ERROR,
+               "Could not alloc memory for stream options.\n");
+        return NULL;
+    }
+    for (i = 0; i < s->nb_streams; i++)
+        opts[i] = filter_codec_opts(codec_opts, s->streams[i]->codecpar->codec_id,
+                                    s, s->streams[i], NULL);
+    return opts;
+}
+
+/* H.264 bitstream with start codes, NOT AVC1! */
+static int h264_split(AVCodecParameters *avpar __unused,
+        const uint8_t *buf, int buf_size, int check_compatible_only)
+{
+    int i;
+    uint32_t state = -1;
+    int has_sps= 0;
+    int has_pps= 0;
+
+    //av_hex_dump(stderr, buf, 100);
+
+    for(i=0; i<=buf_size; i++){
+        if((state&0xFFFFFF1F) == 0x107) {
+            ALOGI("found NAL_SPS");
+            has_sps=1;
+        }
+        if((state&0xFFFFFF1F) == 0x108) {
+            ALOGI("found NAL_PPS");
+            has_pps=1;
+            if (check_compatible_only)
+                return (has_sps & has_pps);
+        }
+        if((state&0xFFFFFF00) == 0x100
+                && ((state&0xFFFFFF1F) == 0x101
+                    || (state&0xFFFFFF1F) == 0x102
+                    || (state&0xFFFFFF1F) == 0x105)){
+            if(has_pps){
+                while(i>4 && buf[i-5]==0) i--;
+                return i-4;
+            }
+        }
+        if (i<buf_size)
+            state= (state<<8) | buf[i];
+    }
+    return 0;
+}
+
+static int mpegvideo_split(AVCodecParameters *avpar __unused,
+        const uint8_t *buf, int buf_size, int check_compatible_only __unused)
+{
+    int i;
+    uint32_t state= -1;
+    int found=0;
+
+    for(i=0; i<buf_size; i++){
+        state= (state<<8) | buf[i];
+        if(state == 0x1B3){
+            found=1;
+        }else if(found && state != 0x1B5 && state < 0x200 && state >= 0x100)
+            return i-3;
+    }
+    return 0;
+}
+
+/* split extradata from buf for Android OMXCodec */
+int parser_split(AVCodecParameters *avpar,
+        const uint8_t *buf, int buf_size)
+{
+    if (!avpar || !buf || buf_size <= 0) {
+        ALOGE("parser split, valid params");
+        return 0;
+    }
+
+    if (avpar->codec_id == AV_CODEC_ID_H264) {
+        return h264_split(avpar, buf, buf_size, 0);
+    } else if (avpar->codec_id == AV_CODEC_ID_MPEG2VIDEO ||
+            avpar->codec_id == AV_CODEC_ID_MPEG4) {
+        return mpegvideo_split(avpar, buf, buf_size, 0);
+    } else {
+        ALOGE("parser split, unsupport the codec, id: 0x%0x", avpar->codec_id);
+    }
+
+    return 0;
+}
+
+int is_extradata_compatible_with_android(AVCodecParameters *avpar)
+{
+    if (avpar->extradata_size <= 0) {
+        ALOGI("extradata_size <= 0, extradata is not compatible with "
+                "android decoder, the codec id: 0x%0x", avpar->codec_id);
+        return 0;
+    }
+
+    if (avpar->codec_id == AV_CODEC_ID_H264
+            && avpar->extradata[0] != 1 /* configurationVersion */) {
+        // SPS + PPS
+        return !!(h264_split(avpar, avpar->extradata,
+                    avpar->extradata_size, 1) > 0);
+    } else {
+        // default, FIXME
+        return !!(avpar->extradata_size > 0);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////
+// packet queue
+//////////////////////////////////////////////////////////////////////////////////
+
+typedef struct PacketList {
+    AVPacket *pkt;
+    struct PacketList *next;
+} PacketList;
+
+typedef struct PacketQueue {
+    PacketList *first_pkt, *last_pkt;
+    int nb_packets;
+    int size;
+    int wait_for_data;
+    int abort_request;
+    Mutex lock;
+    Condition cond;
+} PacketQueue;
+
+PacketQueue* packet_queue_alloc()
+{
+    PacketQueue *queue = (PacketQueue*)av_mallocz(sizeof(PacketQueue));
+    if (queue) {
+        queue->abort_request = 1;
+        return queue;
+    }
+    return NULL;
+}
+
+void packet_queue_free(PacketQueue **q)
+{
+    packet_queue_abort(*q);
+    packet_queue_flush(*q);
+    av_freep(q);
+}
+
+void packet_queue_abort(PacketQueue *q)
+{
+    q->abort_request = 1;
+    Mutex::Autolock autoLock(q->lock);
+    q->cond.signal();
+}
+
+static int packet_queue_put_private(PacketQueue *q, AVPacket *pkt)
+{
+    PacketList *pkt1;
+
+    if (q->abort_request)
+        return -1;
+
+    pkt1 = (PacketList *)av_malloc(sizeof(PacketList));
+    if (!pkt1)
+        return -1;
+    pkt1->pkt = av_packet_alloc();
+    if (!pkt1->pkt) {
+        av_free(pkt1);
+        return -1;
+    }
+    av_packet_move_ref(pkt1->pkt, pkt);
+    pkt1->next = NULL;
+
+    if (!q->last_pkt)
+        q->first_pkt = pkt1;
+    else
+        q->last_pkt->next = pkt1;
+    q->last_pkt = pkt1;
+    q->nb_packets++;
+    //q->size += pkt1->pkt.size + sizeof(*pkt1);
+    q->size += pkt1->pkt->size;
+    q->cond.signal();
+    return 0;
+}
+
+int packet_queue_put(PacketQueue *q, AVPacket *pkt)
+{
+    int ret;
+
+    q->lock.lock();
+    ret = packet_queue_put_private(q, pkt);
+    q->lock.unlock();
+
+    return ret;
+}
+
+int packet_queue_is_wait_for_data(PacketQueue *q)
+{
+    Mutex::Autolock autoLock(q->lock);
+    return q->wait_for_data;
+}
+
+void packet_queue_flush(PacketQueue *q)
+{
+    PacketList *pkt, *pkt1;
+
+    Mutex::Autolock autoLock(q->lock);
+    for (pkt = q->first_pkt; pkt != NULL; pkt = pkt1) {
+        pkt1 = pkt->next;
+        av_packet_free(&pkt->pkt);
+        av_freep(&pkt);
+    }
+    q->last_pkt = NULL;
+    q->first_pkt = NULL;
+    q->nb_packets = 0;
+    q->size = 0;
+}
+
+int packet_queue_put_nullpacket(PacketQueue *q, int stream_index)
+{
+    AVPacket *pkt;
+    int err;
+
+    pkt = av_packet_alloc();
+    pkt->data = NULL;
+    pkt->size = 0;
+    pkt->stream_index = stream_index;
+    err = packet_queue_put(q, pkt);
+    av_packet_free(&pkt);
+
+    return err;
+}
+
+/* packet queue handling */
+/* return < 0 if aborted, 0 if no packet and > 0 if packet.  */
+int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block)
+{
+    PacketList *pkt1;
+    int ret = -1;
+
+    Mutex::Autolock autoLock(q->lock);
+
+    while (!q->abort_request) {
+        pkt1 = q->first_pkt;
+        if (pkt1) {
+            q->first_pkt = pkt1->next;
+            if (!q->first_pkt)
+                q->last_pkt = NULL;
+            q->nb_packets--;
+            //q->size -= pkt1->pkt.size + sizeof(*pkt1);
+            q->size -= pkt1->pkt->size;
+            av_packet_move_ref(pkt, pkt1->pkt);
+            av_packet_free(&pkt1->pkt);
+            av_free(pkt1);
+            ret = 1;
+            break;
+        } else if (!block) {
+            ret = 0;
+            break;
+        } else {
+            q->wait_for_data = 1;
+            q->cond.waitRelative(q->lock, 10000000LL);
+        }
+    }
+    q->wait_for_data = 0;
+    return ret;
+}
+
+void packet_queue_start(PacketQueue *q)
+{
+    Mutex::Autolock autoLock(q->lock);
+    q->abort_request = 0;
 }
 
 }  // namespace android

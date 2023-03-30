@@ -24,10 +24,18 @@
 #include <SimpleC2Interface.h>
 #include "C2FFMPEGVideoDecodeComponent.h"
 #include "ffmpeg_hwaccel.h"
+extern "C" {
+#include <libavfilter/buffersink.h>
+#include <libavfilter/buffersrc.h>
+#include <libavutil/opt.h>
+#include <libavutil/pixdesc.h>
+}
 #ifdef CONFIG_VAAPI
 #include <C2AllocatorGralloc.h>
+extern "C" {
 #include <libavutil/hwcontext_internal.h>
 #include <libavutil/hwcontext_vaapi.h>
+}
 #include <va/va_drmcommon.h>
 #endif
 
@@ -78,7 +86,6 @@ C2FFMPEGVideoDecodeComponent::C2FFMPEGVideoDecodeComponent(
       mImgConvertCtx(NULL),
       mFrame(NULL),
       mPacket(NULL),
-      mFFMPEGInitialized(false),
       mCodecAlreadyOpened(false),
       mExtradataReady(false),
       mEOSSignalled(false) {
@@ -91,14 +98,6 @@ C2FFMPEGVideoDecodeComponent::~C2FFMPEGVideoDecodeComponent() {
 }
 
 c2_status_t C2FFMPEGVideoDecodeComponent::initDecoder() {
-    if (! mFFMPEGInitialized) {
-        if (initFFmpeg() != C2_OK) {
-            ALOGE("initDecoder: FFMPEG initialization failed.");
-            return C2_NO_INIT;
-        }
-        mFFMPEGInitialized = true;
-    }
-
     mCtx = avcodec_alloc_context3(NULL);
     if (! mCtx) {
         ALOGE("initDecoder: avcodec_alloc_context failed.");
@@ -118,7 +117,7 @@ c2_status_t C2FFMPEGVideoDecodeComponent::initDecoder() {
     mCtx->width = size.width;
     mCtx->height = size.height;
 
-    const FFMPEGVideoCodecInfo* codecInfo = mIntf->getCodecInfo();
+    const C2FFMPEGVideoCodecInfo* codecInfo = mIntf->getCodecInfo();
 
     if (codecInfo) {
         ALOGD("initDecoder: use codec info from extractor");
@@ -790,10 +789,6 @@ void C2FFMPEGVideoDecodeComponent::onReset() {
 void C2FFMPEGVideoDecodeComponent::onRelease() {
     ALOGD("onRelease");
     deInitDecoder();
-    if (mFFMPEGInitialized) {
-        deInitFFmpeg();
-        mFFMPEGInitialized = false;
-    }
 }
 
 c2_status_t C2FFMPEGVideoDecodeComponent::onFlush_sm() {

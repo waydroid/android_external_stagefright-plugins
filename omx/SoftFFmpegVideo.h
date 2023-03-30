@@ -21,7 +21,11 @@
 
 #include <media/stagefright/omx/SoftVideoDecoderOMXComponent.h>
 
-#include "ffmpeg_utils.h"
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavfilter/avfilter.h>
+#include <libswscale/swscale.h>
+}
 
 namespace android {
 
@@ -79,7 +83,6 @@ private:
     };
 
     OMX_VIDEO_CODINGTYPE mCodingType;
-    bool mFFmpegAlreadyInited;
     bool mCodecAlreadyOpened;
     AVCodecContext *mCtx;
     AVFilterGraph *mFilterGraph;

@@ -23,6 +23,8 @@
 #include "SoftFFmpegAudio.h"
 #include "FFmpegComponents.h"
 
+#include "ffmpeg_utils.h"
+
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/hexdump.h>
 #include <media/stagefright/ACodec.h>
@@ -60,7 +62,6 @@ SoftFFmpegAudio::SoftFFmpegAudio(
     : SimpleSoftOMXComponent(name, callbacks, appData, component),
       mRole(componentRole),
       mCodingType(codingType),
-      mFFmpegAlreadyInited(false),
       mCodecAlreadyOpened(false),
       mExtradataReady(false),
       mIgnoreExtradata(false),
@@ -88,9 +89,6 @@ SoftFFmpegAudio::SoftFFmpegAudio(
 SoftFFmpegAudio::~SoftFFmpegAudio() {
     ALOGV("~SoftFFmpegAudio");
     deInitDecoder();
-    if (mFFmpegAlreadyInited) {
-        deInitFFmpeg();
-    }
 }
 
 void SoftFFmpegAudio::initPorts() {
@@ -197,14 +195,6 @@ void SoftFFmpegAudio::deinitVorbisHdr() {
 }
 
 status_t SoftFFmpegAudio::initDecoder(enum AVCodecID codecID) {
-    status_t status;
-
-    status = initFFmpeg();
-    if (status != OK) {
-        return NO_INIT;
-    }
-    mFFmpegAlreadyInited = true;
-
     mCtx = avcodec_alloc_context3(NULL);
     if (!mCtx) {
         ALOGE("avcodec_alloc_context failed.");

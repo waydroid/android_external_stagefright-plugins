@@ -254,9 +254,9 @@ C2R C2FFMPEGVideoDecodeInterface::CodecSetter(
     return C2R::Ok();
 }
 
-const FFMPEGVideoCodecInfo* C2FFMPEGVideoDecodeInterface::getCodecInfo() const {
-    if (mRawCodecData->flexCount() == sizeof(FFMPEGVideoCodecInfo)) {
-        return (const FFMPEGVideoCodecInfo*)mRawCodecData->m.value;
+const C2FFMPEGVideoCodecInfo* C2FFMPEGVideoDecodeInterface::getCodecInfo() const {
+    if (mRawCodecData->flexCount() == sizeof(C2FFMPEGVideoCodecInfo)) {
+        return (const C2FFMPEGVideoCodecInfo*)mRawCodecData->m.value;
     }
     return nullptr;
 }

@@ -27,6 +27,12 @@
 #include <va/va.h>
 #endif
 
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavfilter/avfilter.h>
+#include <libswscale/swscale.h>
+}
+
 namespace android {
 
 typedef std::pair<uint64_t, uint64_t> PendingWork;
@@ -91,7 +97,6 @@ private:
     struct SwsContext *mImgConvertCtx;
     AVFrame* mFrame;
     AVPacket* mPacket;
-    bool mFFMPEGInitialized;
     bool mCodecAlreadyOpened;
     bool mExtradataReady;
     bool mEOSSignalled;

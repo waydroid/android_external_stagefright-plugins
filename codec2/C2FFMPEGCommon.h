@@ -17,8 +17,9 @@
 #ifndef C2_FFMPEG_COMPONENT_COMMON_H
 #define C2_FFMPEG_COMPONENT_COMMON_H
 
-#include <media/stagefright/foundation/MediaDefs.h>
-#include "ffmpeg_utils.h"
+extern "C" {
+#include <libavcodec/avcodec.h>
+}
 
 namespace android {
 
@@ -27,6 +28,18 @@ typedef struct {
     const char* mediaType;
     enum AVCodecID codecID;
 } C2FFMPEGComponentInfo;
+
+// Helper datastructures to pass extra information from extractor to codecs
+
+typedef struct {
+    int32_t codec_id;
+    int32_t bits_per_coded_sample;
+    int32_t block_align;
+} C2FFMPEGAudioCodecInfo;
+
+typedef struct {
+    int32_t codec_id;
+} C2FFMPEGVideoCodecInfo;
 
 } // namespace android
 

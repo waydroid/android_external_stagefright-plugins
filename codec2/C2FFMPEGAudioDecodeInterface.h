@@ -19,7 +19,6 @@
 
 #include <SimpleC2Interface.h>
 #include "C2FFMPEGCommon.h"
-#include "codec_utils.h"
 
 namespace android {
 
@@ -33,7 +32,7 @@ public:
     uint32_t getChannelCount() const { return mChannelCount->value; }
     uint32_t getBitrate() const { return mBitrate->value; }
     C2Config::pcm_encoding_t getPcmEncodingInfo() const { return mPcmEncodingInfo->value; }
-    const FFMPEGAudioCodecInfo* getCodecInfo() const;
+    const C2FFMPEGAudioCodecInfo* getCodecInfo() const;
 
 private:
     static C2R CodecSetter(

@@ -21,6 +21,11 @@
 #include "C2FFMPEGCommon.h"
 #include "C2FFMPEGAudioDecodeInterface.h"
 
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libswresample/swresample.h>
+}
+
 namespace android {
 
 struct CodecHelper;
@@ -62,7 +67,6 @@ private:
     AVCodecContext* mCtx;
     AVFrame* mFrame;
     AVPacket* mPacket;
-    bool mFFMPEGInitialized;
     bool mCodecAlreadyOpened;
     bool mEOSSignalled;
     // Audio resampling

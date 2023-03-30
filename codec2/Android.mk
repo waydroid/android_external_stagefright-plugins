@@ -72,3 +72,11 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_CLASS := ETC
 LOCAL_SRC_FILES := media_codecs_ffmpeg_c2.xml
 include $(BUILD_PREBUILT)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := ffmpeg_codec2_headers
+LOCAL_MODULE_TAGS := optional
+LOCAL_HEADER_LIBRARIES := libavcodec
+LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)
+LOCAL_EXPORT_HEADER_LIBRARY_HEADERS := libavocdec
+include $(BUILD_HEADER_LIBRARY)

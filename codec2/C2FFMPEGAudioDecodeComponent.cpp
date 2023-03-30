@@ -20,7 +20,13 @@
 
 #include <SimpleC2Interface.h>
 #include "C2FFMPEGAudioDecodeComponent.h"
+
+extern "C"{
+#include <libavutil/opt.h>
 #include <libswresample/swresample_internal.h>
+}
+
+#include "ffmpeg_utils.h"
 
 #define DEBUG_FRAMES 0
 #define DEBUG_EXTRADATA 0
@@ -204,7 +210,6 @@ C2FFMPEGAudioDecodeComponent::C2FFMPEGAudioDecodeComponent(
       mCtx(NULL),
       mFrame(NULL),
       mPacket(NULL),
-      mFFMPEGInitialized(false),
       mCodecAlreadyOpened(false),
       mEOSSignalled(false),
       mSwrCtx(NULL),
@@ -220,14 +225,6 @@ C2FFMPEGAudioDecodeComponent::~C2FFMPEGAudioDecodeComponent() {
 }
 
 c2_status_t C2FFMPEGAudioDecodeComponent::initDecoder() {
-    if (! mFFMPEGInitialized) {
-        if (initFFmpeg() != C2_OK) {
-            ALOGE("initDecoder: FFMPEG initialization failed.");
-            return C2_NO_INIT;
-        }
-        mFFMPEGInitialized = true;
-    }
-
     mCtx = avcodec_alloc_context3(NULL);
     if (! mCtx) {
         ALOGE("initDecoder: avcodec_alloc_context failed.");
@@ -247,7 +244,7 @@ c2_status_t C2FFMPEGAudioDecodeComponent::initDecoder() {
     // Avoid resampling if possible, ask the codec for the target format.
     mCtx->request_sample_fmt = mCtx->sample_fmt;
 
-    const FFMPEGAudioCodecInfo* codecInfo = mIntf->getCodecInfo();
+    const C2FFMPEGAudioCodecInfo* codecInfo = mIntf->getCodecInfo();
 
     if (codecInfo) {
         ALOGD("initDecoder: use codec info from extractor");
@@ -487,10 +484,6 @@ void C2FFMPEGAudioDecodeComponent::onReset() {
 void C2FFMPEGAudioDecodeComponent::onRelease() {
     ALOGD("onRelease");
     deInitDecoder();
-    if (mFFMPEGInitialized) {
-        deInitFFmpeg();
-        mFFMPEGInitialized = false;
-    }
 }
 
 c2_status_t C2FFMPEGAudioDecodeComponent::onFlush_sm() {

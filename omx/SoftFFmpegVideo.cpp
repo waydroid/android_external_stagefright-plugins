@@ -22,6 +22,11 @@
 #include "SoftFFmpegVideo.h"
 #include "FFmpegComponents.h"
 #include "ffmpeg_hwaccel.h"
+extern "C" {
+#include <libavfilter/buffersink.h>
+#include <libavfilter/buffersrc.h>
+#include <libavutil/opt.h>
+}
 
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/AUtils.h>
@@ -78,7 +83,6 @@ SoftFFmpegVideo::SoftFFmpegVideo(
     : SoftVideoDecoderOMXComponent(name, componentRole, codingType,
             profileLevels, numProfileLevels, 352, 288, callbacks, appData, component),
       mCodingType(codingType),
-      mFFmpegAlreadyInited(false),
       mCodecAlreadyOpened(false),
       mCtx(NULL),
       mFilterGraph(NULL),
@@ -108,9 +112,6 @@ SoftFFmpegVideo::SoftFFmpegVideo(
 SoftFFmpegVideo::~SoftFFmpegVideo() {
     ALOGV("~SoftFFmpegVideo");
     deInitDecoder();
-    if (mFFmpegAlreadyInited) {
-        deInitFFmpeg();
-    }
 }
 
 void SoftFFmpegVideo::setDefaultCtx(AVCodecContext *avctx, const AVCodec *codec __unused) {
@@ -131,14 +132,6 @@ void SoftFFmpegVideo::setDefaultCtx(AVCodecContext *avctx, const AVCodec *codec 
 }
 
 status_t SoftFFmpegVideo::initDecoder(enum AVCodecID codecID) {
-    status_t status;
-
-    status = initFFmpeg();
-    if (status != OK) {
-        return NO_INIT;
-    }
-    mFFmpegAlreadyInited = true;
-
     mCtx = avcodec_alloc_context3(NULL);
     if (!mCtx)
     {
