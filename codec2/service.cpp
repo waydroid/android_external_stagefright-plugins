@@ -52,9 +52,10 @@ static constexpr char kExtSeccompPolicyPath[] =
 static const C2FFMPEGComponentInfo kFFMPEGVideoComponents[] = {
     { "c2.ffmpeg.divx.decoder"  , MEDIA_MIMETYPE_VIDEO_DIVX  , AV_CODEC_ID_MPEG4      },
     { "c2.ffmpeg.flv1.decoder"  , MEDIA_MIMETYPE_VIDEO_FLV1  , AV_CODEC_ID_FLV1       },
+    { "c2.ffmpeg.av1.decoder"   , MEDIA_MIMETYPE_VIDEO_AV1   , AV_CODEC_ID_AV1        },
     { "c2.ffmpeg.h263.decoder"  , MEDIA_MIMETYPE_VIDEO_H263  , AV_CODEC_ID_H263       },
-    { "c2.ffmpeg.hevc.decoder"  , MEDIA_MIMETYPE_VIDEO_HEVC  , AV_CODEC_ID_HEVC       },
     { "c2.ffmpeg.h264.decoder"  , MEDIA_MIMETYPE_VIDEO_AVC   , AV_CODEC_ID_H264       },
+    { "c2.ffmpeg.hevc.decoder"  , MEDIA_MIMETYPE_VIDEO_HEVC  , AV_CODEC_ID_HEVC       },
     { "c2.ffmpeg.mpeg2.decoder" , MEDIA_MIMETYPE_VIDEO_MPEG2 , AV_CODEC_ID_MPEG2VIDEO },
     { "c2.ffmpeg.mpeg4.decoder" , MEDIA_MIMETYPE_VIDEO_MPEG4 , AV_CODEC_ID_MPEG4      },
     { "c2.ffmpeg.rv.decoder"    , MEDIA_MIMETYPE_VIDEO_RV    , AV_CODEC_ID_RV40       },

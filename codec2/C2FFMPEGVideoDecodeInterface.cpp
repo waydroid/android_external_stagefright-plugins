@@ -51,8 +51,8 @@ C2FFMPEGVideoDecodeInterface::C2FFMPEGVideoDecodeInterface(
             DefineParam(mSize, C2_PARAMKEY_PICTURE_SIZE)
             .withDefault(new C2StreamPictureSizeInfo::output(0u, 320, 240))
             .withFields({
-                C2F(mSize, width).inRange(16, kMaxDimension, 2),
-                C2F(mSize, height).inRange(16, kMaxDimension, 2),
+                C2F(mSize, width).inRange(2, kMaxDimension),
+                C2F(mSize, height).inRange(2, kMaxDimension),
             })
             .withSetter(SizeSetter)
             .build());
@@ -176,6 +176,30 @@ C2FFMPEGVideoDecodeInterface::C2FFMPEGVideoDecodeInterface(
                                 C2Config::LEVEL_VP9_4,
                                 C2Config::LEVEL_VP9_4_1,
                                 C2Config::LEVEL_VP9_5,
+                        })
+                    })
+                    .withSetter(ProfileLevelSetter, mSize)
+                    .build());
+        }
+
+        else if (strcasecmp(componentInfo->mediaType, MEDIA_MIMETYPE_VIDEO_AV1) == 0) {
+            addParameter(
+                    DefineParam(mProfileLevel, C2_PARAMKEY_PROFILE_LEVEL)
+                    .withDefault(new C2StreamProfileLevelInfo::input(0u,
+                            C2Config::PROFILE_AV1_0, C2Config::LEVEL_AV1_2_1))
+                    .withFields({
+                        C2F(mProfileLevel, profile).oneOf({
+                                C2Config::PROFILE_AV1_0,
+                                C2Config::PROFILE_AV1_1}),
+                        C2F(mProfileLevel, level).oneOf({
+                                C2Config::LEVEL_AV1_2, C2Config::LEVEL_AV1_2_1,
+                                C2Config::LEVEL_AV1_2_2, C2Config::LEVEL_AV1_2_3,
+                                C2Config::LEVEL_AV1_3, C2Config::LEVEL_AV1_3_1,
+                                C2Config::LEVEL_AV1_3_2, C2Config::LEVEL_AV1_3_3,
+                                C2Config::LEVEL_AV1_4, C2Config::LEVEL_AV1_4_1,
+                                C2Config::LEVEL_AV1_4_2, C2Config::LEVEL_AV1_4_3,
+                                C2Config::LEVEL_AV1_5, C2Config::LEVEL_AV1_5_1,
+                                C2Config::LEVEL_AV1_5_2, C2Config::LEVEL_AV1_5_3
                         })
                     })
                     .withSetter(ProfileLevelSetter, mSize)

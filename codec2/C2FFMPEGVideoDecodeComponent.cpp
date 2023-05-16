@@ -611,7 +611,7 @@ std::shared_ptr<C2Buffer> C2FFMPEGVideoDecodeComponent::getOutputBuffer(const st
     std::shared_ptr<C2GraphicBlock> block;
     c2_status_t err;
 
-    err = pool->fetchGraphicBlock(mFrame->width, mFrame->height, HAL_PIXEL_FORMAT_YV12,
+    err = pool->fetchGraphicBlock(ALIGN(mFrame->width, 16), ALIGN(mFrame->height, 2), HAL_PIXEL_FORMAT_YV12,
                                   { C2MemoryUsage::CPU_READ, C2MemoryUsage::CPU_WRITE }, &block);
     if (err != C2_OK) {
         ALOGE("getOutputBuffer: failed to fetch graphic block %d x %d (%#x) err = %d",
