@@ -27,9 +27,9 @@
 
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/hexdump.h>
-#include <media/stagefright/ACodec.h>
 #include <media/stagefright/MediaDefs.h>
 
+#include <OMX_Audio.h>
 #include <OMX_AudioExt.h>
 #include <OMX_IndexExt.h>
 
@@ -292,7 +292,7 @@ OMX_ERRORTYPE SoftFFmpegAudio::internalGetParameter(
                 }
             }
 
-            if (ACodec::getOMXChannelMapping(mAudioTgtChannels, profile->eChannelMapping) != OK) {
+            if (CustomGetOMXChannelMapping(mAudioTgtChannels, profile->eChannelMapping) != OK) {
                 return OMX_ErrorNone;
             }
 
@@ -1612,6 +1612,68 @@ void SoftFFmpegAudio::onPortEnableCompleted(OMX_U32 portIndex, bool enabled) {
             break;
         }
     }
+}
+
+// Clone from frameworks/av/media/libstagefright/ACodec.cpp
+status_t SoftFFmpegAudio::CustomGetOMXChannelMapping(size_t numChannels, OMX_AUDIO_CHANNELTYPE map[]) {
+    switch (numChannels) {
+        case 1:
+            map[0] = OMX_AUDIO_ChannelCF;
+            break;
+        case 2:
+            map[0] = OMX_AUDIO_ChannelLF;
+            map[1] = OMX_AUDIO_ChannelRF;
+            break;
+        case 3:
+            map[0] = OMX_AUDIO_ChannelLF;
+            map[1] = OMX_AUDIO_ChannelRF;
+            map[2] = OMX_AUDIO_ChannelCF;
+            break;
+        case 4:
+            map[0] = OMX_AUDIO_ChannelLF;
+            map[1] = OMX_AUDIO_ChannelRF;
+            map[2] = OMX_AUDIO_ChannelLR;
+            map[3] = OMX_AUDIO_ChannelRR;
+            break;
+        case 5:
+            map[0] = OMX_AUDIO_ChannelLF;
+            map[1] = OMX_AUDIO_ChannelRF;
+            map[2] = OMX_AUDIO_ChannelCF;
+            map[3] = OMX_AUDIO_ChannelLR;
+            map[4] = OMX_AUDIO_ChannelRR;
+            break;
+        case 6:
+            map[0] = OMX_AUDIO_ChannelLF;
+            map[1] = OMX_AUDIO_ChannelRF;
+            map[2] = OMX_AUDIO_ChannelCF;
+            map[3] = OMX_AUDIO_ChannelLFE;
+            map[4] = OMX_AUDIO_ChannelLR;
+            map[5] = OMX_AUDIO_ChannelRR;
+            break;
+        case 7:
+            map[0] = OMX_AUDIO_ChannelLF;
+            map[1] = OMX_AUDIO_ChannelRF;
+            map[2] = OMX_AUDIO_ChannelCF;
+            map[3] = OMX_AUDIO_ChannelLFE;
+            map[4] = OMX_AUDIO_ChannelLR;
+            map[5] = OMX_AUDIO_ChannelRR;
+            map[6] = OMX_AUDIO_ChannelCS;
+            break;
+        case 8:
+            map[0] = OMX_AUDIO_ChannelLF;
+            map[1] = OMX_AUDIO_ChannelRF;
+            map[2] = OMX_AUDIO_ChannelCF;
+            map[3] = OMX_AUDIO_ChannelLFE;
+            map[4] = OMX_AUDIO_ChannelLR;
+            map[5] = OMX_AUDIO_ChannelRR;
+            map[6] = OMX_AUDIO_ChannelLS;
+            map[7] = OMX_AUDIO_ChannelRS;
+            break;
+        default:
+            return -EINVAL;
+    }
+
+    return OK;
 }
 
 int64_t SoftFFmpegAudio::getAudioClock() {

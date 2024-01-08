@@ -31,6 +31,7 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 
+#include <OMX_Audio.h>
 #include <OMX_AudioExt.h>
 #include <OMX_IndexExt.h>
 
@@ -55,6 +56,7 @@ public:
     static SoftOMXComponent* createSoftOMXComponent(
             const char *name, const OMX_CALLBACKTYPE *callbacks,
             OMX_PTR appData, OMX_COMPONENTTYPE **component);
+    static status_t CustomGetOMXChannelMapping(size_t numChannels, OMX_AUDIO_CHANNELTYPE map[]);
 
 protected:
     virtual ~SoftFFmpegAudio();

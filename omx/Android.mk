@@ -7,6 +7,8 @@ LOCAL_SRC_FILES := \
 	SoftFFmpegAudio.cpp \
 	SoftFFmpegVideo.cpp
 
+LOCAL_HEADER_LIBRARIES += media_plugin_headers
+
 LOCAL_SHARED_LIBRARIES += \
 	libavcodec        \
 	libavutil         \
@@ -16,7 +18,6 @@ LOCAL_SHARED_LIBRARIES += \
 	libavfilter       \
 	liblog            \
 	libswscale        \
-	libstagefright    \
 	libstagefright_foundation \
 	libstagefright_softomx \
 	libutils
