@@ -20,7 +20,7 @@ include $(CLEAR_VARS)
 include $(SF_COMMON_MK)
 LOCAL_MODULE := android.hardware.media.c2@1.1-ffmpeg-service
 LOCAL_MODULE_RELATIVE_PATH := hw
-# LOCAL_VINTF_FRAGMENTS := manifest_media_c2_V1_1_ffmpeg.xml
+LOCAL_VINTF_FRAGMENTS := manifest_media_c2_V1_1_ffmpeg.xml
 LOCAL_INIT_RC := android.hardware.media.c2@1.1-ffmpeg-service.rc
 LOCAL_REQUIRED_MODULES := \
 	android.hardware.media.c2@1.1-ffmpeg.policy \
