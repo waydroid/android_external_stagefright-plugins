@@ -21,28 +21,22 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-#include <utils/Errors.h>
 #include <media/NdkMediaError.h>
-#include <media/stagefright/foundation/ABuffer.h>
+#include <media/NdkMediaFormat.h>
+#include <media/stagefright/foundation/MediaDefs.h>
 
-#include "ffmpeg_utils.h"
-
-struct AMediaFormat;
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavutil/avutil.h>
+}
 
 namespace android {
 
-// Helper datastructures to pass extra information from extractor to codecs
-typedef struct {
-    int32_t codec_id;
-    int32_t bits_per_coded_sample;
-    int32_t block_align;
-} FFMPEGAudioCodecInfo;
+//////////////////////////////////////////////////////////////////////////////////
+// video
+//////////////////////////////////////////////////////////////////////////////////
 
-typedef struct {
-    int32_t codec_id;
-} FFMPEGVideoCodecInfo;
-
-//video
 media_status_t setAVCFormat(AVCodecParameters *avpar, AMediaFormat *meta);
 media_status_t setH264Format(AVCodecParameters *avpar, AMediaFormat *meta);
 media_status_t setMPEG4Format(AVCodecParameters *avpar, AMediaFormat *meta);
@@ -59,7 +53,11 @@ media_status_t setFLV1Format(AVCodecParameters *avpar, AMediaFormat *meta);
 media_status_t setHEVCFormat(AVCodecParameters *avpar, AMediaFormat *meta);
 media_status_t setVP8Format(AVCodecParameters *avpar, AMediaFormat *meta);
 media_status_t setVP9Format(AVCodecParameters *avpar, AMediaFormat *meta);
-//audio
+
+//////////////////////////////////////////////////////////////////////////////////
+// audio
+//////////////////////////////////////////////////////////////////////////////////
+
 media_status_t setMP2Format(AVCodecParameters *avpar, AMediaFormat *meta);
 media_status_t setMP3Format(AVCodecParameters *avpar, AMediaFormat *meta);
 media_status_t setVORBISFormat(AVCodecParameters *avpar, AMediaFormat *meta);
@@ -75,6 +73,10 @@ media_status_t setDTSFormat(AVCodecParameters *avpar, AMediaFormat *meta);
 media_status_t setFLACFormat(AVCodecParameters *avpar, AMediaFormat *meta);
 media_status_t setALACFormat(AVCodecParameters *avpar, AMediaFormat *meta);
 
+//////////////////////////////////////////////////////////////////////////////////
+// parser
+//////////////////////////////////////////////////////////////////////////////////
+
 //Convert H.264 NAL format to annex b
 media_status_t convertNal2AnnexB(uint8_t *dst, size_t dst_size,
         uint8_t *src, size_t src_size, size_t nal_len_size);
@@ -84,7 +86,28 @@ int getDivXVersion(AVCodecParameters *avpar);
 media_status_t parseMetadataTags(AVFormatContext *ctx, AMediaFormat *meta);
 
 AudioEncoding sampleFormatToEncoding(AVSampleFormat fmt);
-AVSampleFormat encodingToSampleFormat(AudioEncoding encoding);
+
+double get_rotation(AVStream *st);
+AVDictionary **setup_find_stream_info_opts(AVFormatContext *, AVDictionary *);
+
+int is_extradata_compatible_with_android(AVCodecParameters *avpar);
+int parser_split(AVCodecParameters *avpar, const uint8_t *buf, int buf_size);
+
+//////////////////////////////////////////////////////////////////////////////////
+// packet queue
+//////////////////////////////////////////////////////////////////////////////////
+
+typedef struct PacketQueue PacketQueue;
+
+PacketQueue* packet_queue_alloc();
+void packet_queue_free(PacketQueue **q);
+void packet_queue_flush(PacketQueue *q);
+void packet_queue_start(PacketQueue *q);
+void packet_queue_abort(PacketQueue *q);
+int packet_queue_is_wait_for_data(PacketQueue *q);
+int packet_queue_put(PacketQueue *q, AVPacket *pkt);
+int packet_queue_put_nullpacket(PacketQueue *q, int stream_index);
+int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block);
 
 }  // namespace android
 

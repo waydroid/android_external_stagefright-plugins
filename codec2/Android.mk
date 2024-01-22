@@ -34,6 +34,7 @@ LOCAL_SRC_FILES := \
 LOCAL_SHARED_LIBRARIES := \
 	android.hardware.media.c2@1.1 \
 	libavcodec \
+	libavfilter \
 	libavutil \
 	libavservices_minijail \
 	libbase \
@@ -48,6 +49,9 @@ LOCAL_SHARED_LIBRARIES := \
 	libswresample \
 	libswscale \
 	libutils
+ifeq ($(CONFIG_VAAPI),yes)
+LOCAL_SHARED_LIBRARIES += libva
+endif
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
@@ -66,5 +70,14 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := media_codecs_ffmpeg_c2.xml
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_CLASS := ETC
+LOCAL_PROPRIETARY_MODULE := true
 LOCAL_SRC_FILES := media_codecs_ffmpeg_c2.xml
 include $(BUILD_PREBUILT)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := ffmpeg_codec2_headers
+LOCAL_MODULE_TAGS := optional
+LOCAL_HEADER_LIBRARIES := libavcodec
+LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)
+LOCAL_EXPORT_HEADER_LIBRARY_HEADERS := libavocdec
+include $(BUILD_HEADER_LIBRARY)

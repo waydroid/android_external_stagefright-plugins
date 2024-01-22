@@ -19,7 +19,6 @@
 
 #include <SimpleC2Interface.h>
 #include "C2FFMPEGCommon.h"
-#include "codec_utils.h"
 
 namespace android {
 
@@ -31,10 +30,11 @@ public:
 
     uint32_t getWidth() const { return mSize->width; }
     uint32_t getHeight() const { return mSize->height; }
-    const FFMPEGVideoCodecInfo* getCodecInfo() const;
+    const C2FFMPEGVideoCodecInfo* getCodecInfo() const;
     uint64_t getConsumerUsage() const { return mConsumerUsage->value; }
     const std::shared_ptr<C2StreamPixelFormatInfo::output>&
         getPixelFormatInfo() const { return mPixelFormat; }
+    uint32_t getPixelFormat() const { return mPixelFormat->value; }
     uint32_t getOutputDelay() const { return mActualOutputDelay->value; }
 
 private:

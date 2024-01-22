@@ -17,31 +17,24 @@
 
 //#define LOG_NDEBUG 0
 #define LOG_TAG "FFmpegExtractor"
-#include <utils/Log.h>
+#include <log/log.h>
 
 #include <stdint.h>
 #include <limits.h> /* INT_MAX */
 #include <inttypes.h>
 #include <sys/prctl.h>
 
-#include <utils/misc.h>
-#include <utils/String8.h>
 #include <cutils/properties.h>
+#include <media/MediaExtractorPluginApi.h>
 #include <media/stagefright/DataSourceBase.h>
-#include <media/stagefright/foundation/ABitReader.h>
-#include <media/stagefright/foundation/ABuffer.h>
 #include <media/stagefright/foundation/ADebug.h>
-#include <media/stagefright/foundation/AMessage.h>
-#include <media/stagefright/foundation/avc_utils.h>
+#include <media/stagefright/foundation/MediaDefs.h>
 #include <media/stagefright/foundation/hexdump.h>
-#include <media/stagefright/MediaBuffer.h>
-#include <media/stagefright/foundation/ADebug.h>
-#include <media/stagefright/MediaDefs.h>
-#include <media/stagefright/MediaErrors.h>
-#include <media/stagefright/Utils.h>
+#include <utils/misc.h>
 
-#include "codec_utils.h"
-#include "ffmpeg_cmdutils.h"
+#include "extractor_utils.h"
+#include "ffmpeg_utils.h"
+#include <C2FFMPEGCommon.h>
 
 #include "FFmpegExtractor.h"
 
@@ -487,7 +480,7 @@ media_status_t FFmpegExtractor::setVideoFormat(AVStream *stream, AMediaFormat *m
         AMediaFormat_setString(meta, "file-format", findMatchingContainer(mFormatCtx->iformat->name));
         setDurationMetaData(stream, meta);
 
-        FFMPEGVideoCodecInfo info = {
+        C2FFMPEGVideoCodecInfo info = {
             .codec_id = avpar->codec_id,
         };
 
@@ -582,7 +575,7 @@ media_status_t FFmpegExtractor::setAudioFormat(AVStream *stream, AMediaFormat *m
         AMediaFormat_setString(meta, "file-format", findMatchingContainer(mFormatCtx->iformat->name));
         setDurationMetaData(stream, meta);
 
-        FFMPEGAudioCodecInfo info = {
+        C2FFMPEGAudioCodecInfo info = {
             .codec_id = avpar->codec_id,
             .bits_per_coded_sample = avpar->bits_per_coded_sample,
             .block_align = avpar->block_align,
@@ -1884,12 +1877,6 @@ static const char *SniffFFMPEGCommon(const char *url, float *confidence, bool is
     AVDictionary *codec_opts = NULL;
     AVDictionary **opts = NULL;
     bool needProbe = false;
-
-    static status_t status = initFFmpeg();
-    if (status != OK) {
-        ALOGE("could not init ffmpeg");
-        return NULL;
-    }
 
     ic = avformat_alloc_context();
     if (!ic)

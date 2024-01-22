@@ -51,8 +51,8 @@ C2FFMPEGVideoDecodeInterface::C2FFMPEGVideoDecodeInterface(
             DefineParam(mSize, C2_PARAMKEY_PICTURE_SIZE)
             .withDefault(new C2StreamPictureSizeInfo::output(0u, 320, 240))
             .withFields({
-                C2F(mSize, width).inRange(16, kMaxDimension, 2),
-                C2F(mSize, height).inRange(16, kMaxDimension, 2),
+                C2F(mSize, width).inRange(2, kMaxDimension),
+                C2F(mSize, height).inRange(2, kMaxDimension),
             })
             .withSetter(SizeSetter)
             .build());
@@ -60,7 +60,7 @@ C2FFMPEGVideoDecodeInterface::C2FFMPEGVideoDecodeInterface(
     if (strcasecmp(componentInfo->mediaType, MEDIA_MIMETYPE_VIDEO_MPEG2) == 0) {
         addParameter(
                 DefineParam(mActualOutputDelay, C2_PARAMKEY_OUTPUT_DELAY)
-                .withConstValue(new C2PortActualDelayTuning::output(3u))
+                .withConstValue(new C2PortActualDelayTuning::output(8u))
                 .build());
 
         addParameter(
@@ -181,6 +181,30 @@ C2FFMPEGVideoDecodeInterface::C2FFMPEGVideoDecodeInterface(
                     .withSetter(ProfileLevelSetter, mSize)
                     .build());
         }
+
+        else if (strcasecmp(componentInfo->mediaType, MEDIA_MIMETYPE_VIDEO_AV1) == 0) {
+            addParameter(
+                    DefineParam(mProfileLevel, C2_PARAMKEY_PROFILE_LEVEL)
+                    .withDefault(new C2StreamProfileLevelInfo::input(0u,
+                            C2Config::PROFILE_AV1_0, C2Config::LEVEL_AV1_2_1))
+                    .withFields({
+                        C2F(mProfileLevel, profile).oneOf({
+                                C2Config::PROFILE_AV1_0,
+                                C2Config::PROFILE_AV1_1}),
+                        C2F(mProfileLevel, level).oneOf({
+                                C2Config::LEVEL_AV1_2, C2Config::LEVEL_AV1_2_1,
+                                C2Config::LEVEL_AV1_2_2, C2Config::LEVEL_AV1_2_3,
+                                C2Config::LEVEL_AV1_3, C2Config::LEVEL_AV1_3_1,
+                                C2Config::LEVEL_AV1_3_2, C2Config::LEVEL_AV1_3_3,
+                                C2Config::LEVEL_AV1_4, C2Config::LEVEL_AV1_4_1,
+                                C2Config::LEVEL_AV1_4_2, C2Config::LEVEL_AV1_4_3,
+                                C2Config::LEVEL_AV1_5, C2Config::LEVEL_AV1_5_1,
+                                C2Config::LEVEL_AV1_5_2, C2Config::LEVEL_AV1_5_3
+                        })
+                    })
+                    .withSetter(ProfileLevelSetter, mSize)
+                    .build());
+        }
     }
 
     C2ChromaOffsetStruct locations[1] = { C2ChromaOffsetStruct::ITU_YUV_420_0() };
@@ -202,8 +226,10 @@ C2FFMPEGVideoDecodeInterface::C2FFMPEGVideoDecodeInterface(
 
     addParameter(
             DefineParam(mPixelFormat, C2_PARAMKEY_PIXEL_FORMAT)
-            .withConstValue(new C2StreamPixelFormatInfo::output(
+            .withDefault(new C2StreamPixelFormatInfo::output(
                                  0u, HAL_PIXEL_FORMAT_YV12))
+            .withFields({C2F(mPixelFormat, value).any()})
+            .withSetter(Setter<decltype(*mPixelFormat)>::StrictValueWithNoDeps)
             .build());
 
     addParameter(
@@ -252,9 +278,9 @@ C2R C2FFMPEGVideoDecodeInterface::CodecSetter(
     return C2R::Ok();
 }
 
-const FFMPEGVideoCodecInfo* C2FFMPEGVideoDecodeInterface::getCodecInfo() const {
-    if (mRawCodecData->flexCount() == sizeof(FFMPEGVideoCodecInfo)) {
-        return (const FFMPEGVideoCodecInfo*)mRawCodecData->m.value;
+const C2FFMPEGVideoCodecInfo* C2FFMPEGVideoDecodeInterface::getCodecInfo() const {
+    if (mRawCodecData->flexCount() == sizeof(C2FFMPEGVideoCodecInfo)) {
+        return (const C2FFMPEGVideoCodecInfo*)mRawCodecData->m.value;
     }
     return nullptr;
 }
