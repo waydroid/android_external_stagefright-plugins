@@ -23,5 +23,5 @@ include external/$(AV_CODEC_LIB)/android/$(AV_CODEC_LIB).mk
 LOCAL_CFLAGS += -D__STDC_CONSTANT_MACROS=1 -D__STDINT_LIMITS=1
 
 # All modules are installed on /vendor and optional.
-#LOCAL_PROPRIETARY_MODULE := true
+LOCAL_PROPRIETARY_MODULE := true
 LOCAL_MODULE_TAGS := optional
